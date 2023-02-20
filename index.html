@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <base href="/3body/index.html" />
+    <title>万有引力</title>
+    <link rel="icon" type="image/png" href="favicon.png">
+    <link rel="shortcut icon" type="image/x-icon" href="favicon.png">
+    <link rel="bookmark" type="image/x-icon" href="favicon.png">
+    <style>
+        body {
+            padding: 0;
+            margin: 0;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            background: black;
+        }
+
+        main {
+            text-shadow: 0 0 5px black;
+        }
+
+        #left-panel {
+            position: fixed;
+            top: 45px;
+            bottom: 5px;
+            left: 5px;
+            font-size: 13px;
+
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+
+            pointer-events: none;
+
+            user-select: none;
+        }
+
+        #left-panel>* {
+            width: -moz-fit-content;
+            width: fit-content;
+            /* pointer-events: all; */
+
+        }
+
+        .scale50px {
+            display: inline-block;
+            width: 50px;
+            height: 5px;
+            border-bottom: 2px solid currentColor;
+            border-left: 1px solid currentColor;
+            border-right: 1px solid currentColor;
+        }
+
+        .multiPercentBar {
+            display: inline-block;
+            /* width: 70px; */
+            /* height: 1.5em; */
+            /* vertical-align: middle; */
+            font-size: 0.8em;
+            padding-left: .5em;
+            padding-right: 1.5em;
+        }
+
+        .lightBar {
+            display: inline-block;
+            width: 3em;
+            height: 0.8em;
+            vertical-align: middle;
+        }
+
+        button {
+            user-select: none;
+            border: none;
+            color: inherit;
+            background: #505050;
+            pointer-events: all;
+            padding: 1px 6px;
+        }
+
+        button:not(:first-child) {
+            margin-left: 2px;
+        }
+
+        button:hover {
+            background: #6b6b6b;
+        }
+
+        button:active {
+            background: #454545;
+        }
+
+        button.unselected {
+            opacity: 0.6;
+        }
+
+        .popup-wrapper {
+            position: fixed;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.5);
+            /* display: none; */
+        }
+
+        .popup-content {
+            background: rgba(51, 51, 51, 0.3);
+            backdrop-filter: blur(10px);
+            padding: 10px 20px;
+            max-width: 800px;
+            margin: 1em;
+        }
+
+        .system-sets {
+            display: flex;
+            flex-wrap: wrap;
+            gap: .3em;
+        }
+
+        .system-sets button {
+            margin: 0;
+        }
+
+        [v-cloak] {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas></canvas>
+    <main v-cloak v-show="!hideUI">
+        <div id="left-panel">
+            <div>光照强度：<span class="lightBar" :style="{background:state.dss.lightColor}"></span>
+                地球的{{state.dss.light.toFixed(3)}}倍</div>
+            <div>最近恒星距离：{{state.dss.nearestAU.toFixed(3)}}倍日地距离(AU)</div>
+            <div style="margin-top: 10px;">打点密度/光带速度：每秒{{tracksManager.tracksPerSecCount}}个 <button
+                    @click="reduceTracks">÷2</button> <button @click="increaseTracks">×2</button>
+            </div>
+            <div>轨迹保留时间：{{(tracksManager.tracksRemainTime/60).toFixed(2)}}分钟 <button
+                    @click="reduceTracksRemainTime">÷1.5</button> <button
+                    @click="increaseTracksRemainTime">×1.5</button>
+            </div>
+            <div style="margin-top: 10px;">
+                {{SystemSet.name}}
+                <button style="margin-left: 6px;" @click="showLoadSetPopup=true">🌌 切换系统</button>
+                <button @click="location.reload()">↻ 重载</button>
+            </div>
+            <div style="margin-top: 10px;">行星视角：<button :class="{unselected:!params.useFocus}"
+                    @click="changeUseFocus(true)">是</button>
+                <button :class="{unselected:params.useFocus}" @click="changeUseFocus(false)">否</button>
+            </div>
+            <div style="flex-grow: 1;"></div>
+            <!-- <div>光照强度拟化百分比：{{state.dss.lightPer.toFixed(3)}}%</div> -->
+
+            <div style="font-weight: bold;">模拟时间：{{(state.time/(60 * 60 * 24 * 365)).toFixed(3)}}地球年（{{(state.time/(60 *
+                60 * 24)).toFixed(2)}}地球天）
+            </div>
+            <div style="margin-top: 5px;">
+                <button @click="reduceTimeMultiplier">减慢 ÷1.5</button> <button @click="increaseTimeMultiplier">加快
+                    ×1.5</button>
+            </div>
+            <div style="margin-top: 5px;">
+                时间倍率（运行速度）：{{state.timeMultiplier.toFixed(0)}}（1分钟={{(state.timeMultiplier/(60 * 24*365)).toFixed(2)}}年）
+            </div>
+            <div>实际倍率（性能）：<span class="multiPercentBar"
+                    :style="{background: 'linear-gradient(90deg, green, green '+state.realTimeMultiplier*100/state.timeMultiplier+'%, red '+state.realTimeMultiplier*100/state.timeMultiplier+'%, red)' }">{{(state.realTimeMultiplier*100/state.timeMultiplier
+                    +
+                    1000).toFixed(2).slice(1)}}%</span> {{state.realTimeMultiplier.toFixed(2)}}</div>
+            <div style="margin-top: 10px;">步距（精度）：{{state.accuracy.toFixed(7)}}秒 <button
+                    @click="reduceAccuracy">÷2</button> <button @click="increaseAccuracy">×2</button></div>
+            <div style="margin-top: 10px;"><span class="scale50px"></span> {{((50*canvas.dp*canvas.scale)/Math.pow(10,
+                10)).toFixed(2)}}×10¹⁰米 （可自由拖动和缩放）
+                <!-- <button @click="zoomOut">缩小</button>
+                <button @click="zoomIn">放大</button> -->
+            </div>
+        </div>
+        <div v-if="showLoadSetPopup" class="popup-wrapper">
+            <div class="popup-content">
+                <h5 style="margin: .5em 0 1em;">载入星体系统<button style="float:right;"
+                        @click="showLoadSetPopup=false">×</button></h5>
+                <div id="set-selecter">
+                    <div class="system-sets">
+                        <button v-for="set in SystemSets.filter(n=>!n.hide)"
+                            @click="local.nowSystemSetId=set.id;location.reload();">{{set.name}}</button>
+                    </div>
+                </div>
+                <h5 style="margin: 2em 0 1em;">提示</h5>
+                <ul style="font-size:.9em;">
+                    <li>性能不足时可尝试增大步距</li>
+                    <li>所有星体统一视为质心，视觉大小非真实比例，也不会相撞；在随机系统中，恒星视觉大小与质量成正比</li>
+                    <li>步距在某种程度上可以视为种子，在完全相同的初始条件下，轻微的步距差异可能会使发展截然不同</li>
+                    <li>未考虑行星自转，光带上的周期类似季节，而不是日夜</li>
+                </ul>
+                <div style="font-size:small;opacity: 0.6;text-align: right;">by <a style="color: inherit;"
+                        target="_blank" href="https://www.thatwind.com/">那风(thatwind.com)</a></div>
+            </div>
+        </div>
+    </main>
+    <script src="vue.min.js"></script>
+    <script src="gestures.js?1"></script>
+    <script src="3-body-system-sets.js"></script>
+    <script src="index.js?14">
+    </script>
+</body>
+
+</html>
